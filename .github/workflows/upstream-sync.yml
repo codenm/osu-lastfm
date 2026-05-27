@@ -31,14 +31,27 @@ jobs:
           git fetch origin
           git fetch upstream
 
-      - name: Create sync branch
+      - name: Check for upstream changes
+        id: upstream
         run: |
-          git switch -C chore/upstream-sync upstream/main
+          COMMITS_AHEAD="$(git rev-list --count origin/main..upstream/main)"
+          echo "commits_ahead=${COMMITS_AHEAD}" >> "$GITHUB_OUTPUT"
+          if [ "$COMMITS_AHEAD" = "0" ]; then
+            echo "upstream/main has no new commits for origin/main."
+          fi
+
+      - name: Create sync branch
+        if: steps.upstream.outputs.commits_ahead != '0'
+        run: |
+          git switch -C chore/upstream-sync origin/main
+          git merge --no-edit upstream/main
 
       - name: Push sync branch
+        if: steps.upstream.outputs.commits_ahead != '0'
         run: git push --force-with-lease origin chore/upstream-sync
 
       - name: Open or update PR
+        if: steps.upstream.outputs.commits_ahead != '0'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
