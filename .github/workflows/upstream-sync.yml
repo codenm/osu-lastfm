@@ -1,4 +1,4 @@
-name: Sync with upstream
+name: Check upstream
 
 on:
   schedule:
@@ -6,22 +6,16 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
-  sync:
+  check:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout fork
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Configure git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Add upstream remote
         run: git remote add upstream https://github.com/yaGeey/osu-find-songs.git
@@ -32,34 +26,25 @@ jobs:
           git fetch upstream
 
       - name: Check for upstream changes
-        id: upstream
         run: |
           COMMITS_AHEAD="$(git rev-list --count origin/main..upstream/main)"
-          echo "commits_ahead=${COMMITS_AHEAD}" >> "$GITHUB_OUTPUT"
+
           if [ "$COMMITS_AHEAD" = "0" ]; then
-            echo "upstream/main has no new commits for origin/main."
+            echo "No upstream changes found."
+            echo "## Upstream check" >> "$GITHUB_STEP_SUMMARY"
+            echo "origin/main already contains upstream/main." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
           fi
 
-      - name: Create sync branch
-        if: steps.upstream.outputs.commits_ahead != '0'
-        run: |
-          git switch -C chore/upstream-sync origin/main
-          git merge --no-edit upstream/main
-
-      - name: Push sync branch
-        if: steps.upstream.outputs.commits_ahead != '0'
-        run: git push --force-with-lease origin chore/upstream-sync
-
-      - name: Open or update PR
-        if: steps.upstream.outputs.commits_ahead != '0'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh pr create \
-            --base main \
-            --head chore/upstream-sync \
-            --title "chore: sync upstream/main into main" \
-            --body "Automated upstream sync PR from \`upstream/main\` into \`main\`." \
-          || gh pr edit chore/upstream-sync \
-            --title "chore: sync upstream/main into main" \
-            --body "Automated upstream sync PR from \`upstream/main\` into \`main\`."
+          echo "Upstream has ${COMMITS_AHEAD} new commit(s). Manual review is required."
+          echo "## Upstream check" >> "$GITHUB_STEP_SUMMARY"
+          echo "upstream/main has ${COMMITS_AHEAD} new commit(s) that are not in origin/main." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Review manually before syncing, because this fork intentionally diverges from upstream." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Suggested local commands:" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`\`\`powershell" >> "$GITHUB_STEP_SUMMARY"
+          echo "git fetch upstream" >> "$GITHUB_STEP_SUMMARY"
+          echo "git log --oneline origin/main..upstream/main" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`\`\`" >> "$GITHUB_STEP_SUMMARY"
+          exit 1
